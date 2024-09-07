@@ -5,8 +5,8 @@ trait IERC4626<TState> {
     // ************************************
     // * Metadata
     // ************************************
-    fn name(self: @TState) -> felt252;
-    fn symbol(self: @TState) -> felt252;
+    fn name(self: @TState) -> ByteArray;
+    fn symbol(self: @TState) -> ByteArray;
     fn decimals(self: @TState) -> u8;
 
     // ************************************
@@ -64,8 +64,8 @@ trait IERC4626<TState> {
 
 #[starknet::interface]
 trait IERC4626Metadata<TState> {
-    fn name(self: @TState) -> felt252;
-    fn symbol(self: @TState) -> felt252;
+    fn name(self: @TState) -> ByteArray;
+    fn symbol(self: @TState) -> ByteArray;
     fn decimals(self: @TState) -> u8;
 }
 

@@ -1,12 +1,13 @@
 use core::traits::TryInto;
 use debug::PrintTrait;
-use erc4626::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
+use erc4626::erc4626::interface::{IERC4626Dispatcher, IERC4626DispatcherTrait};
 use erc4626::utils::{pow_256};
 use integer::BoundedU256;
 use openzeppelin::token::erc20::{ERC20ABIDispatcher, ERC20ABIDispatcherTrait};
 use snforge_std::{
     declare, ContractClassTrait, start_prank, stop_prank, CheatTarget, start_warp, stop_warp
 };
+use openzeppelin::utils::serde::SerializedAppend;
 use starknet::{ContractAddress, contract_address_const, get_contract_address};
 
 fn OWNER() -> ContractAddress {
@@ -34,7 +35,7 @@ fn VAULT_ADDRESS() -> ContractAddress {
 }
 
 fn deploy_token() -> (ERC20ABIDispatcher, ContractAddress) {
-    let token = declare('ERC20Token');
+    let token = declare("ERC20Token");
     let mut calldata = Default::default();
     Serde::serialize(@OWNER(), ref calldata);
     Serde::serialize(@INITIAL_SUPPLY(), ref calldata);
@@ -46,13 +47,15 @@ fn deploy_token() -> (ERC20ABIDispatcher, ContractAddress) {
 
 fn deploy_contract() -> (ERC20ABIDispatcher, IERC4626Dispatcher) {
     let (token, token_address) = deploy_token();
-    let mut params = ArrayTrait::<felt252>::new();
-    token_address.serialize(ref params);
-    params.append('Vault Mock Token');
-    params.append('vltMCK');
-    params.append(8);
-    let vault = declare('ERC4626');
-    let contract_address = vault.deploy_at(@params, VAULT_ADDRESS()).unwrap();
+    let mut calldata = array![];
+    let name: ByteArray = "Vault Mock Token";
+    let symbol: ByteArray = "vltMCK";
+    calldata.append_serde(token_address);
+    calldata.append_serde(name);
+    calldata.append_serde(symbol);
+    calldata.append(0);
+    let vault = declare("ERC4626");
+    let contract_address = vault.deploy_at(@calldata, VAULT_ADDRESS()).unwrap();
     (token, IERC4626Dispatcher { contract_address })
 }
 
@@ -61,60 +64,60 @@ fn deploy_contract() -> (ERC20ABIDispatcher, IERC4626Dispatcher) {
 fn test_constructor() {
     let (asset, vault) = deploy_contract();
     assert(vault.asset() == asset.contract_address, 'invalid asset');
-    assert(vault.decimals() == (18 + 8), 'invalid decimals');
-    assert(vault.name() == 'Vault Mock Token', 'invalid name');
-    assert(vault.symbol() == 'vltMCK', 'invalid symbol');
+    assert(vault.decimals() == (18 + 0), 'invalid decimals');
+    assert(vault.name() == "Vault Mock Token", 'invalid name');
+    assert(vault.symbol() == "vltMCK", 'invalid symbol');
 }
 #[test]
 fn convert_to_assets() {
-    let (asset, vault) = deploy_contract();
-    let shares = pow_256(10, 10);
+    let (_asset, vault) = deploy_contract();
+    let shares = pow_256(10, 2);
     // 10e10 * (0 + 1) / (0 + 10e8)
     assert(vault.convert_to_assets(shares) == 100, 'invalid assets');
 }
 #[test]
 fn convert_to_shares() {
-    let (asset, vault) = deploy_contract();
+    let (_asset, vault) = deploy_contract();
     let assets = 10;
     // asset * shares / total assets
     // 10 * (0 + 10e8) / (0 + 1)
-    assert(vault.convert_to_shares(assets) == pow_256(10, 9), 'invalid shares');
+    assert(vault.convert_to_shares(assets) == pow_256(10, 1), 'invalid shares');
 }
 
 #[test]
 fn max_deposit() {
-    let (asset, vault) = deploy_contract();
+    let (_asset, vault) = deploy_contract();
     assert(vault.max_deposit(get_contract_address()) == BoundedU256::max(), 'invalid max deposit');
 }
 
 #[test]
 fn max_mint() {
-    let (asset, vault) = deploy_contract();
+    let (_asset, vault) = deploy_contract();
     assert(vault.max_mint(get_contract_address()) == BoundedU256::max(), 'invalid max mint');
 }
 
 #[test]
 fn preview_deposit() {
-    let (asset, vault) = deploy_contract();
-    assert(vault.preview_deposit(10) == pow_256(10, 9), 'invalid preview_deposit');
+    let (_asset, vault) = deploy_contract();
+    assert(vault.preview_deposit(10) == pow_256(10, 1), 'invalid preview_deposit');
 }
 
 #[test]
 fn preview_mint() {
-    let (asset, vault) = deploy_contract();
-    assert(vault.preview_mint(pow_256(10, 10)) == 100, 'invalid preview_mint');
+    let (_asset, vault) = deploy_contract();
+    assert(vault.preview_mint(pow_256(10, 2)) == 100, 'invalid preview_mint');
 }
 
 #[test]
 fn preview_redeem() {
-    let (asset, vault) = deploy_contract();
-    assert(vault.preview_redeem(pow_256(10, 10)) == 100, 'invalid preview_redeem');
+    let (_asset, vault) = deploy_contract();
+    assert(vault.preview_redeem(pow_256(10, 2)) == 100, 'invalid preview_redeem');
 }
 
 #[test]
 fn preview_withdraw() {
-    let (asset, vault) = deploy_contract();
-    assert(vault.preview_redeem(pow_256(10, 10)) == 100, 'invalid preview_withdraw');
+    let (_asset, vault) = deploy_contract();
+    assert(vault.preview_redeem(pow_256(10, 2)) == 100, 'invalid preview_withdraw');
 }
 #[test]
 fn test_deposit() {
@@ -136,7 +139,7 @@ fn test_max_redeem() {
     start_prank(CheatTarget::One(asset.contract_address), OWNER());
     asset.approve(vault.contract_address, amount);
     stop_prank(CheatTarget::One(asset.contract_address));
-    let result = vault.preview_deposit(amount);
+    let _result = vault.preview_deposit(amount);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
     let shares = vault.deposit(amount, OWNER());
     assert(vault.max_redeem(OWNER()) == shares, 'invalid max redeem');
@@ -148,9 +151,9 @@ fn max_withdraw() {
     start_prank(CheatTarget::One(asset.contract_address), OWNER());
     asset.approve(vault.contract_address, amount);
     stop_prank(CheatTarget::One(asset.contract_address));
-    let result = vault.preview_deposit(amount);
+    let _result = vault.preview_deposit(amount);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
-    let shares = vault.deposit(amount, OWNER());
+    let _shares = vault.deposit(amount, OWNER());
     let value = vault.convert_to_assets(vault.balanceOf(OWNER()));
     assert(vault.max_withdraw(OWNER()) == value, 'invalid max withdraw');
 }
@@ -161,10 +164,10 @@ fn mint() {
     start_prank(CheatTarget::One(asset.contract_address), OWNER());
     asset.approve(vault.contract_address, amount);
     stop_prank(CheatTarget::One(asset.contract_address));
-    let result = vault.preview_deposit(amount);
+    let _result = vault.preview_deposit(amount);
     let minted = vault.preview_mint(1);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
-    let shares = vault.mint(1, OWNER());
+    let _shares = vault.mint(1, OWNER());
     assert(vault.balanceOf(OWNER()) == minted, 'invalid mint shares');
 }
 #[test]
@@ -174,13 +177,13 @@ fn test_redeem() {
     start_prank(CheatTarget::One(asset.contract_address), OWNER());
     asset.approve(vault.contract_address, amount);
     stop_prank(CheatTarget::One(asset.contract_address));
-    let result = vault.preview_deposit(amount);
+    let _result = vault.preview_deposit(amount);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
     let shares = vault.deposit(amount, OWNER());
     assert(vault.balanceOf(OWNER()) == shares, 'invalid balance before');
-    let preview = vault.preview_redeem(shares);
+    let _preview = vault.preview_redeem(shares);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
-    let redeemed = vault.redeem(shares, OWNER(), OWNER());
+    let _redeemed = vault.redeem(shares, OWNER(), OWNER());
     assert(vault.balanceOf(OWNER()) == 0, 'invalid balance after');
 }
 
@@ -191,13 +194,13 @@ fn test_withdraw() {
     start_prank(CheatTarget::One(asset.contract_address), OWNER());
     asset.approve(vault.contract_address, amount);
     stop_prank(CheatTarget::One(asset.contract_address));
-    let result = vault.preview_deposit(amount);
+    let _result = vault.preview_deposit(amount);
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
     let shares = vault.deposit(amount, OWNER());
     assert(vault.balanceOf(OWNER()) == shares, 'invalid balance before');
 
     start_prank(CheatTarget::One(vault.contract_address), OWNER());
-    let shares = vault.withdraw(amount, OWNER(), OWNER());
+    let _shares = vault.withdraw(amount, OWNER(), OWNER());
     assert(vault.balanceOf(OWNER()) == 0, 'invalid balance after');
 }
 
